@@ -1,0 +1,278 @@
+<Introduction>
+In the tutorial, we saw how to build an image classifier by attaching a head of dense layers to a pretrained base. The base we used was from a model called VGG16. We saw that the VGG16
+architecture was prone to overfitting this dataset. Over this course, you will learn a number of ways you can improve upon this initial attempt.
+
+The first way you will see is to use a base more appropriate to the dataset. The base this model comes from is called InceptionV1 (also known as GoogLeNet). InceptionV1 was one of the
+early winners of the ImageNet competition. One of its successors, InceptionV4, is among the state of the art today.
+
+To get started, run the code cell below to set everything up.
+
+****************
+# Setup feedback system
+from learntools.core import binder
+binder.bind(globals())
+from learntools.computer_vision.ex1 import *
+
+# Imports
+import os, warnings
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+
+# Reproducability
+def set_seed(seed=31415):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+set_seed()
+
+# Set Matplotlib defaults
+plt.rc('figure', autolayout=True)
+plt.rc('axes', labelweight='bold', labelsize='large',
+       titleweight='bold', titlesize=18, titlepad=10)
+plt.rc('image', cmap='magma')
+warnings.filterwarnings("ignore") # to clean up output cells
+
+
+# Load training and validation sets
+ds_train_ = image_dataset_from_directory(
+    '../input/car-or-truck/train',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=True,
+)
+ds_valid_ = image_dataset_from_directory(
+    '../input/car-or-truck/valid',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=False,
+)
+
+# Data Pipeline
+def convert_to_float(image, label):
+    image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    return image, label
+
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+ds_train = (
+    ds_train_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+ds_valid = (
+    ds_valid_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+
+Found 5117 files belonging to 2 classes.
+Found 5051 files belonging to 2 classes.
+****************
+
+The InceptionV1 model pretrained on ImageNet is available in the TensorFlow Hub repository, but we'll load it from a local copy. Run this cell to load InceptionV1 for your base.
+
+****************
+import tensorflow_hub as hub
+
+pretrained_base = tf.keras.models.load_model(
+    '../input/cv-course-models/cv-course-models/inceptionv1'
+)
+****************
+
+<1st step: Define pre-trained base>
+Now that you have a pretrained base to do our feature extraction, decide whether this base should be trainable or not.
+
+****************
+# YOUR_CODE_HERE
+pretrained_base.trainable = False
+
+# Check your answer
+q_1.check()
+
+Correct:
+When doing transfer learning, it's generally not a good idea to retrain the entire base -- at least not without some care. The reason is that the random weights in the head will initial
+ly create large gradient updates, which propogate back into the base layers and destroy much of the pretraining. Using techniques known as fine tuning it's possible to further train the
+base on new data, but this requires some care to do well.
+****************
+
+<2nd step: Attach head>
+Now that the base is defined to do the feature extraction, create a head of Dense layers to perform the classification, following this diagram:
+Flatten()
+Dense(units=6, activation='relu')
+Dense(units=1, activation='sigmoid')
+
+****************
+from tensorflow import keras
+from tensorflow.keras import layers
+
+model = keras.Sequential([
+    pretrained_base,
+    layers.Flatten(),
+    # YOUR CODE HERE. Attach a head of dense layers.
+    layers.Dense(units=6, activation='relu'),
+    layers.Dense(units=1, activation='sigmoid')
+])
+
+# Check your answer
+q_2.check()
+
+Correct
+
+# Lines below will give you a hint or solution code
+q_2.hint()
+q_2.solution()
+
+Hint:
+You need to add two new Dense layers. The first should have 6 units and 'relu' activation. The second should have 1 unit and 'sigmoid' activation.
+
+Solution:
+from tensorflow import keras
+from tensorflow.keras import layers
+
+model = keras.Sequential([
+    pretrained_base,
+    layers.Flatten(),
+    layers.Dense(6, activation='relu'),
+    layers.Dense(1, activation='sigmoid'),
+])
+****************
+
+<3rd step: Train the model>
+Before training a model in Keras, you need to specify an optimizer to perform the gradient descent, a loss function to be minimized, and (optionally) any performance metrics. The optimi
+zation algorithm we'll use for this course is called "Adam", which generally performs well regardless of what kind of problem you're trying to solve.
+
+The loss and the metrics, however, need to match the kind of problem you're trying to solve. Our problem is a binary classification problem: Car coded as 0, and Truck coded as 1. Choose
+an appropriate loss and an appropriate accuracy metric for binary classification.
+
+****************
+# YOUR CODE HERE: what loss function should you use for a binary
+# classification problem? (Your answer for each should be a string.)
+optimizer = tf.keras.optimizers.Adam(epsilon=0.01)
+model.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy']
+)
+
+# Check your answer
+q_3.check()
+
+Correct
+
+# Lines below will give you a hint or solution code
+q_3.hint()
+q_3.solution()
+
+Hint:
+This is a binary classification problem.
+
+Solution:
+model.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy'],
+)
+****************
+
+Run the cell below to plot the loss and metric curves for this training run.
+
+****************
+history = model.fit(
+    ds_train,
+    validation_data=ds_valid,
+    epochs=30,
+)
+
+import pandas as pd
+history_frame = pd.DataFrame(history.history)
+history_frame.loc[:, ['loss', 'val_loss']].plot()
+history_frame.loc[:, ['binary_accuracy', 'val_binary_accuracy']].plot();
+
+Epoch 1/30
+80/80 [==============================] - 21s 176ms/step - loss: 0.5407 - binary_accuracy: 0.7207 - val_loss: 0.4224 - val_binary_accuracy: 0.8107
+Epoch 2/30
+80/80 [==============================] - 3s 43ms/step - loss: 0.4098 - binary_accuracy: 0.8181 - val_loss: 0.3938 - val_binary_accuracy: 0.8287
+Epoch 3/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3808 - binary_accuracy: 0.8358 - val_loss: 0.3816 - val_binary_accuracy: 0.8343
+Epoch 4/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3622 - binary_accuracy: 0.8458 - val_loss: 0.3740 - val_binary_accuracy: 0.8377
+Epoch 5/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3493 - binary_accuracy: 0.8517 - val_loss: 0.3677 - val_binary_accuracy: 0.8410
+Epoch 6/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3384 - binary_accuracy: 0.8577 - val_loss: 0.3632 - val_binary_accuracy: 0.8430
+Epoch 7/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3294 - binary_accuracy: 0.8607 - val_loss: 0.3598 - val_binary_accuracy: 0.8472
+Epoch 8/30
+80/80 [==============================] - 3s 43ms/step - loss: 0.3214 - binary_accuracy: 0.8644 - val_loss: 0.3554 - val_binary_accuracy: 0.8501
+Epoch 9/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3143 - binary_accuracy: 0.8677 - val_loss: 0.3538 - val_binary_accuracy: 0.8507
+Epoch 10/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.3080 - binary_accuracy: 0.8728 - val_loss: 0.3531 - val_binary_accuracy: 0.8495
+Epoch 11/30
+80/80 [==============================] - 3s 43ms/step - loss: 0.3024 - binary_accuracy: 0.8745 - val_loss: 0.3521 - val_binary_accuracy: 0.8509
+Epoch 12/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2970 - binary_accuracy: 0.8786 - val_loss: 0.3495 - val_binary_accuracy: 0.8517
+Epoch 13/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2920 - binary_accuracy: 0.8820 - val_loss: 0.3478 - val_binary_accuracy: 0.8527
+Epoch 14/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2869 - binary_accuracy: 0.8833 - val_loss: 0.3446 - val_binary_accuracy: 0.8541
+Epoch 15/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2824 - binary_accuracy: 0.8843 - val_loss: 0.3433 - val_binary_accuracy: 0.8541
+Epoch 16/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2780 - binary_accuracy: 0.8867 - val_loss: 0.3407 - val_binary_accuracy: 0.8557
+Epoch 17/30
+80/80 [==============================] - 3s 43ms/step - loss: 0.2740 - binary_accuracy: 0.8882 - val_loss: 0.3392 - val_binary_accuracy: 0.8563
+Epoch 18/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2703 - binary_accuracy: 0.8908 - val_loss: 0.3380 - val_binary_accuracy: 0.8577
+Epoch 19/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2668 - binary_accuracy: 0.8927 - val_loss: 0.3369 - val_binary_accuracy: 0.8584
+Epoch 20/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2636 - binary_accuracy: 0.8951 - val_loss: 0.3371 - val_binary_accuracy: 0.8590
+Epoch 21/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2604 - binary_accuracy: 0.8953 - val_loss: 0.3353 - val_binary_accuracy: 0.8602
+Epoch 22/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2573 - binary_accuracy: 0.8958 - val_loss: 0.3345 - val_binary_accuracy: 0.8612
+Epoch 23/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2543 - binary_accuracy: 0.8982 - val_loss: 0.3329 - val_binary_accuracy: 0.8620
+Epoch 24/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2515 - binary_accuracy: 0.8992 - val_loss: 0.3323 - val_binary_accuracy: 0.8632
+Epoch 25/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2487 - binary_accuracy: 0.8994 - val_loss: 0.3325 - val_binary_accuracy: 0.8632
+Epoch 26/30
+80/80 [==============================] - 3s 43ms/step - loss: 0.2464 - binary_accuracy: 0.9005 - val_loss: 0.3322 - val_binary_accuracy: 0.8624
+Epoch 27/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2438 - binary_accuracy: 0.9013 - val_loss: 0.3324 - val_binary_accuracy: 0.8628
+Epoch 28/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2416 - binary_accuracy: 0.9023 - val_loss: 0.3325 - val_binary_accuracy: 0.8634
+Epoch 29/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2394 - binary_accuracy: 0.9031 - val_loss: 0.3328 - val_binary_accuracy: 0.8634
+Epoch 30/30
+80/80 [==============================] - 3s 42ms/step - loss: 0.2372 - binary_accuracy: 0.9040 - val_loss: 0.3331 - val_binary_accuracy: 0.8640
+****************
+
+<4th step: Examine loss and accuracy>
+Do you notice a difference between these learning curves and the curves for VGG16 from the tutorial? What does this difference tell you about what this model (InceptionV2) learned compa
+red to VGG16? Are there ways in which one is better than the other? Worse?
+
+After you've thought about it, run the cell below to see the answer.
+
+****************
+# View the solution (Run this code cell to receive credit!)
+q_4.check()
+
+Correct:
+That the training loss and validation loss stay fairly close is evidence that the model isn't just memorizing the training data, but rather learning general properties of the two class
+es. But, because this model converges at a loss greater than the VGG16 model, it's likely that it is underfitting some, and could benefit from some extra capacity.
+****************
