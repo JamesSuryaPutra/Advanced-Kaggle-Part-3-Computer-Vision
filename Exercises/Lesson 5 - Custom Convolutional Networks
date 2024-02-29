@@ -1,0 +1,323 @@
+<Introduction>
+In these exercises, you'll build a custom convnet with performance competitive to the VGG16 model from Lesson 1. Get started by running the code cell below.
+
+****************
+# Setup feedback system
+from learntools.core import binder
+binder.bind(globals())
+from learntools.computer_vision.ex5 import *
+
+# Imports
+import os, warnings
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+
+# Reproducability
+def set_seed(seed=31415):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+set_seed()
+
+# Set Matplotlib defaults
+plt.rc('figure', autolayout=True)
+plt.rc('axes', labelweight='bold', labelsize='large',
+       titleweight='bold', titlesize=18, titlepad=10)
+plt.rc('image', cmap='magma')
+warnings.filterwarnings("ignore") # to clean up output cells
+
+
+# Load training and validation sets
+ds_train_ = image_dataset_from_directory(
+    '../input/car-or-truck/train',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=True,
+)
+ds_valid_ = image_dataset_from_directory(
+    '../input/car-or-truck/valid',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=False,
+)
+
+# Data Pipeline
+def convert_to_float(image, label):
+    image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    return image, label
+
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+ds_train = (
+    ds_train_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+ds_valid = (
+    ds_valid_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+
+Found 5117 files belonging to 2 classes.
+Found 5051 files belonging to 2 classes.
+****************
+
+<Design a convnet>
+Let's design a convolutional network with a block architecture like we saw in the tutorial. The model from the example had three blocks, each with a single convolutional layer. Its perf
+ormance on the "Car or Truck" problem was okay, but far from what the pretrained VGG16 could achieve. It might be that our simple network lacks the ability to extract sufficiently compl
+ex features. We could try improving the model either by adding more blocks or by adding convolutions to the blocks we have.
+
+Let's go with the second approach. We'll keep the three block structure, but increase the number of Conv2D layer in the second block to two, and in the third block to three.
+
+<1st step: Define a model>
+Given the diagram above, complete the model by defining the layers of the third block.
+
+****************
+from tensorflow import keras
+from tensorflow.keras import layers
+​
+model = keras.Sequential([
+    # Block One
+    layers.Conv2D(filters=32, kernel_size=3, activation='relu', padding='same',
+                  input_shape=[128, 128, 3]),
+    layers.MaxPool2D(),
+​
+    # Block Two
+    layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+​
+    # Block Three
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+​
+    # Head
+    layers.Flatten(),
+    layers.Dense(6, activation='relu'),
+    layers.Dropout(0.2),
+    layers.Dense(1, activation='sigmoid'),
+])
+​
+# Check your answer
+q_1.check()
+
+Correct
+
+# Lines below will give you a hint or solution code
+q_1.hint()
+q_1.solution()
+
+Hint:
+You should add two Conv2D layers and then a MaxPool2D layer. They will be just the same as the other layers in the model, except for some of the parameter values.
+
+Solution:
+from tensorflow import keras
+from tensorflow.keras import layers
+
+model = keras.Sequential([
+    # Block One
+    layers.Conv2D(filters=32, kernel_size=3, activation='relu', padding='same',
+                  input_shape=[128, 128, 3]),
+    layers.MaxPool2D(),
+
+    # Block Two
+    layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # Block Three
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # Head
+    layers.Flatten(),
+    layers.Dense(6, activation='relu'),
+    layers.Dropout(0.2),
+    layers.Dense(1, activation='sigmoid'),
+])
+****************
+
+<2nd step: Compile>
+To prepare for training, compile the model with an appropriate loss and accuracy metric for the "Car or Truck" dataset.
+
+****************
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(epsilon=0.01),
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy']
+)
+
+# Check your answer
+q_2.check()
+
+Correct
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(epsilon=0.01),
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy'],
+)
+q_2.assert_check_passed()
+
+Correct
+
+# Lines below will give you a hint or solution code
+q_2.hint()
+q_2.solution()
+
+Hint:
+This is a binary classification problem.
+
+Solution:
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy'],
+)
+****************
+
+Finally, let's test the performance of this new model. First run this cell to fit the model to the training set.
+
+****************
+history = model.fit(
+    ds_train,
+    validation_data=ds_valid,
+    epochs=50,
+)
+
+Epoch 1/50
+80/80 [==============================] - 16s 135ms/step - loss: 0.6921 - binary_accuracy: 0.5607 - val_loss: 0.6889 - val_binary_accuracy: 0.6147
+Epoch 2/50
+80/80 [==============================] - 3s 41ms/step - loss: 0.6870 - binary_accuracy: 0.6058 - val_loss: 0.6831 - val_binary_accuracy: 0.6316
+Epoch 3/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6811 - binary_accuracy: 0.6193 - val_loss: 0.6767 - val_binary_accuracy: 0.6337
+Epoch 4/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6775 - binary_accuracy: 0.6160 - val_loss: 0.6716 - val_binary_accuracy: 0.6381
+Epoch 5/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6703 - binary_accuracy: 0.6285 - val_loss: 0.6651 - val_binary_accuracy: 0.6448
+Epoch 6/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6668 - binary_accuracy: 0.6250 - val_loss: 0.6606 - val_binary_accuracy: 0.6488
+Epoch 7/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6594 - binary_accuracy: 0.6412 - val_loss: 0.6558 - val_binary_accuracy: 0.6567
+Epoch 8/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6527 - binary_accuracy: 0.6527 - val_loss: 0.6496 - val_binary_accuracy: 0.6620
+Epoch 9/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6487 - binary_accuracy: 0.6510 - val_loss: 0.6440 - val_binary_accuracy: 0.6670
+Epoch 10/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6371 - binary_accuracy: 0.6709 - val_loss: 0.6366 - val_binary_accuracy: 0.6717
+Epoch 11/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6308 - binary_accuracy: 0.6791 - val_loss: 0.6351 - val_binary_accuracy: 0.6692
+Epoch 12/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6244 - binary_accuracy: 0.6832 - val_loss: 0.6229 - val_binary_accuracy: 0.6850
+Epoch 13/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6105 - binary_accuracy: 0.6998 - val_loss: 0.6114 - val_binary_accuracy: 0.7003
+Epoch 14/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.6058 - binary_accuracy: 0.7006 - val_loss: 0.6002 - val_binary_accuracy: 0.7104
+Epoch 15/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.5937 - binary_accuracy: 0.7108 - val_loss: 0.6222 - val_binary_accuracy: 0.6753
+Epoch 16/50
+80/80 [==============================] - 3s 41ms/step - loss: 0.5931 - binary_accuracy: 0.7076 - val_loss: 0.5858 - val_binary_accuracy: 0.7238
+Epoch 17/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.5673 - binary_accuracy: 0.7334 - val_loss: 0.5643 - val_binary_accuracy: 0.7442
+Epoch 18/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.5403 - binary_accuracy: 0.7538 - val_loss: 0.5461 - val_binary_accuracy: 0.7595
+Epoch 19/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.5372 - binary_accuracy: 0.7551 - val_loss: 0.5416 - val_binary_accuracy: 0.7597
+Epoch 20/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.5278 - binary_accuracy: 0.7563 - val_loss: 0.5348 - val_binary_accuracy: 0.7672
+Epoch 21/50
+80/80 [==============================] - 4s 47ms/step - loss: 0.5122 - binary_accuracy: 0.7719 - val_loss: 0.5398 - val_binary_accuracy: 0.7598
+Epoch 22/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.4828 - binary_accuracy: 0.7932 - val_loss: 0.5053 - val_binary_accuracy: 0.7834
+Epoch 23/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.4625 - binary_accuracy: 0.8153 - val_loss: 0.4979 - val_binary_accuracy: 0.7888
+Epoch 24/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.4424 - binary_accuracy: 0.8270 - val_loss: 0.4833 - val_binary_accuracy: 0.7990
+Epoch 25/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.4207 - binary_accuracy: 0.8392 - val_loss: 0.4952 - val_binary_accuracy: 0.7941
+Epoch 26/50
+80/80 [==============================] - 3s 41ms/step - loss: 0.4053 - binary_accuracy: 0.8493 - val_loss: 0.5553 - val_binary_accuracy: 0.7765
+Epoch 27/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3919 - binary_accuracy: 0.8566 - val_loss: 0.4882 - val_binary_accuracy: 0.7939
+Epoch 28/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3915 - binary_accuracy: 0.8525 - val_loss: 0.4706 - val_binary_accuracy: 0.7957
+Epoch 29/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3683 - binary_accuracy: 0.8697 - val_loss: 0.4945 - val_binary_accuracy: 0.7705
+Epoch 30/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3506 - binary_accuracy: 0.8736 - val_loss: 0.4847 - val_binary_accuracy: 0.7870
+Epoch 31/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3285 - binary_accuracy: 0.8876 - val_loss: 0.4804 - val_binary_accuracy: 0.7888
+Epoch 32/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3236 - binary_accuracy: 0.8865 - val_loss: 0.5033 - val_binary_accuracy: 0.7694
+Epoch 33/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3065 - binary_accuracy: 0.8972 - val_loss: 0.5026 - val_binary_accuracy: 0.7755
+Epoch 34/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3022 - binary_accuracy: 0.8996 - val_loss: 0.4721 - val_binary_accuracy: 0.8054
+Epoch 35/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.3082 - binary_accuracy: 0.8929 - val_loss: 0.4678 - val_binary_accuracy: 0.8028
+Epoch 36/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.2859 - binary_accuracy: 0.9066 - val_loss: 0.4978 - val_binary_accuracy: 0.7761
+Epoch 37/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.2669 - binary_accuracy: 0.9179 - val_loss: 0.4451 - val_binary_accuracy: 0.8143
+Epoch 38/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.2416 - binary_accuracy: 0.9273 - val_loss: 0.4570 - val_binary_accuracy: 0.8309
+Epoch 39/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.2539 - binary_accuracy: 0.9197 - val_loss: 0.5640 - val_binary_accuracy: 0.8206
+Epoch 40/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.2310 - binary_accuracy: 0.9295 - val_loss: 0.5689 - val_binary_accuracy: 0.8248
+Epoch 41/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.2043 - binary_accuracy: 0.9449 - val_loss: 0.6164 - val_binary_accuracy: 0.8141
+Epoch 42/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1928 - binary_accuracy: 0.9515 - val_loss: 0.8195 - val_binary_accuracy: 0.7858
+Epoch 43/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1802 - binary_accuracy: 0.9545 - val_loss: 0.6686 - val_binary_accuracy: 0.8226
+Epoch 44/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1767 - binary_accuracy: 0.9564 - val_loss: 0.6108 - val_binary_accuracy: 0.8188
+Epoch 45/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1686 - binary_accuracy: 0.9568 - val_loss: 0.4941 - val_binary_accuracy: 0.8357
+Epoch 46/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.1585 - binary_accuracy: 0.9617 - val_loss: 0.4825 - val_binary_accuracy: 0.8339
+Epoch 47/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1583 - binary_accuracy: 0.9605 - val_loss: 0.4694 - val_binary_accuracy: 0.8448
+Epoch 48/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1455 - binary_accuracy: 0.9662 - val_loss: 0.5229 - val_binary_accuracy: 0.8367
+Epoch 49/50
+80/80 [==============================] - 3s 39ms/step - loss: 0.1356 - binary_accuracy: 0.9685 - val_loss: 0.5146 - val_binary_accuracy: 0.8464
+Epoch 50/50
+80/80 [==============================] - 3s 40ms/step - loss: 0.1299 - binary_accuracy: 0.9717 - val_loss: 0.5628 - val_binary_accuracy: 0.8386
+****************
+
+And now run the cell below to plot the loss and metric curves for this training run.
+
+****************
+import pandas as pd
+history_frame = pd.DataFrame(history.history)
+history_frame.loc[:, ['loss', 'val_loss']].plot()
+history_frame.loc[:, ['binary_accuracy', 'val_binary_accuracy']].plot();
+****************
+
+<3rd step: Train the model>
+How would you interpret these training curves? Did this model improve upon the model from the tutorial?
+
+****************
+# View the solution (Run this code cell to receive credit!)
+q_3.check()
+
+Correct:
+The learning curves for the model from the tutorial diverged fairly rapidly. This would indicate that it was prone to overfitting and in need of some regularization. The additional la
+yer in our new model would make it even more prone to overfitting. However, adding some regularization with the Dropout layer helped prevent this. These changes improved the validation
+accuracy of the model by several points.
+****************
