@@ -1,0 +1,383 @@
+<Introduction>
+In these exercises, you'll explore what effect various random transformations have on an image, consider what kind of augmentation might be appropriate on a given dataset, and then use data
+augmentation with the Car or Truck dataset to train a custom network. Run the cell below to set everything up!
+
+****************
+# Setup feedback system
+from learntools.core import binder
+binder.bind(globals())
+from learntools.computer_vision.ex6 import *
+
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.layers.experimental import preprocessing
+
+# Imports
+import os, warnings
+import matplotlib.pyplot as plt
+from matplotlib import gridspec
+
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+
+# Reproducability
+def set_seed(seed=31415):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    #os.environ['TF_DETERMINISTIC_OPS'] = '1'
+set_seed()
+
+# Set Matplotlib defaults
+plt.rc('figure', autolayout=True)
+plt.rc('axes', labelweight='bold', labelsize='large',
+       titleweight='bold', titlesize=18, titlepad=10)
+plt.rc('image', cmap='magma')
+warnings.filterwarnings("ignore") # to clean up output cells
+
+
+# Load training and validation sets
+ds_train_ = image_dataset_from_directory(
+    '../input/car-or-truck/train',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=True,
+)
+ds_valid_ = image_dataset_from_directory(
+    '../input/car-or-truck/valid',
+    labels='inferred',
+    label_mode='binary',
+    image_size=[128, 128],
+    interpolation='nearest',
+    batch_size=64,
+    shuffle=False,
+)
+
+# Data Pipeline
+def convert_to_float(image, label):
+    image = tf.image.convert_image_dtype(image, dtype=tf.float32)
+    return image, label
+
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+ds_train = (
+    ds_train_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+ds_valid = (
+    ds_valid_
+    .map(convert_to_float)
+    .cache()
+    .prefetch(buffer_size=AUTOTUNE)
+)
+
+Found 5117 files belonging to 2 classes.
+Found 5051 files belonging to 2 classes.
+****************
+
+<Explore augmentation>
+Uncomment a transformation and run the cell to see what it does. You can experiment with the parameter values too, if you like (the factor parameters should be greater than 0 and, gener
+ally, less than 1). Run the cell again if you'd like to get a new random image.
+
+****************
+# all of the "factor" parameters indicate a percent-change
+augment = keras.Sequential([
+    # preprocessing.RandomContrast(factor=0.5),
+    # preprocessing.RandomFlip(mode='horizontal'), # meaning, left-to-right
+    # preprocessing.RandomFlip(mode='vertical'), # meaning, top-to-bottom
+    # preprocessing.RandomWidth(factor=0.15), # horizontal stretch
+    # preprocessing.RandomRotation(factor=0.20),
+    preprocessing.RandomTranslation(height_factor=0.1, width_factor=0.1),
+])
+
+
+ex = next(iter(ds_train.unbatch().map(lambda x, y: x).batch(1)))
+
+plt.figure(figsize=(10,10))
+for i in range(16):
+    image = augment(ex, training=True)
+    plt.subplot(4, 4, i+1)
+    plt.imshow(tf.squeeze(image))
+    plt.axis('off')
+plt.show()
+****************
+
+Do the transformations you chose seem reasonable for the Car or Truck dataset?
+
+In this exercise, we'll look at a few datasets and think about what kind of augmentation might be appropriate. Your reasoning might be different that what we discuss in the solution.
+That's okay. The point of these problems is just to think about how a transformation might interact with a classification problem; for better or worse.
+
+<1st step: EuroSAT>
+The EuroSAT dataset consists of satellite images of the Earth classified by geographic feature. What kinds of transformations might be appropriate for this dataset?
+
+****************
+# View the solution (Run this code cell to receive credit!)
+q_1.check()
+
+Correct:
+It seems to this author that flips and rotations would be worth trying first since there's no concept of orientation for pictures taken straight overhead. None of the transformations
+seem likely to confuse classes, however.
+****************
+
+<2nd step: TensorFlow Flowers>
+The TensorFlow Flowers dataset consists of photographs of flowers of several species. What kinds of transformations might be appropriate for the TensorFlow Flowers dataset?
+
+****************
+# View the solution (Run this code cell to receive credit!)
+q_2.check()
+
+Correct:
+It seems to this author that horizontal flips and moderate rotations would be worth trying first. Some augmentation libraries include transformations of hue (like red to blue). Since
+the color of a flower seems distinctive of its class, a change of hue might be less successful. On the other hand, there is suprising variety in cultivated flowers like roses, so,
+depending on the dataset, this might be an improvement after all!
+****************
+
+Now you'll use data augmentation with a custom convnet similar to the one you built in Exercise 5. Since data augmentation effectively increases the size of the dataset, we can increase
+the capacity of the model in turn without as much risk of overfitting.
+
+<3rd step: Add pre-processing layers>
+Add these preprocessing layers to the given model:
+1} preprocessing.RandomContrast(factor=0.10),
+2} preprocessing.RandomFlip(mode='horizontal'),
+3} preprocessing.RandomRotation(factor=0.10),
+
+****************
+from tensorflow import keras
+from tensorflow.keras import layers
+​
+model = keras.Sequential([
+    layers.InputLayer(input_shape=[128, 128, 3]),
+    
+    # Data Augmentation
+    preprocessing.RandomContrast(factor=0.10),
+    preprocessing.RandomFlip(mode='horizontal'),
+    preprocessing.RandomRotation(factor=0.10),
+​
+    # Block One
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+​
+    # Block Two
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+​
+    # Block Three
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=256, kernel_size=3, activation='relu', padding='same'),
+    layers.Conv2D(filters=256, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+​
+    # Head
+    layers.BatchNormalization(renorm=True),
+    layers.Flatten(),
+    layers.Dense(8, activation='relu'),
+    layers.Dense(1, activation='sigmoid'),
+])
+​
+# Check your answer
+q_3.check()
+
+Correct
+
+# Lines below will give you a hint or solution code
+q_3.hint()
+q_3.solution()
+
+Hint:
+Your answer should look something like:
+model = keras.Sequential([
+    layers.InputLayer(input_shape=[128, 128, 3]),
+
+    # Data Augmentation
+    preprocessing.____,
+    preprocessing.____,
+    preprocessing.____,
+
+    # Block One
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # More layers follow...
+])
+
+Solution:
+from tensorflow import keras
+from tensorflow.keras import layers
+
+model = keras.Sequential([
+    layers.InputLayer(input_shape=[128, 128, 3]),
+
+    # Data Augmentation
+    preprocessing.RandomContrast(factor=0.10),
+    preprocessing.RandomFlip(mode='horizontal'),
+    preprocessing.RandomRotation(factor=0.10),
+
+    # Block One
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # Block Two
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=128, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # Block Three
+    layers.BatchNormalization(renorm=True),
+    layers.Conv2D(filters=256, kernel_size=3, activation='relu', padding='same'),
+    layers.Conv2D(filters=256, kernel_size=3, activation='relu', padding='same'),
+    layers.MaxPool2D(),
+
+    # Head
+    layers.BatchNormalization(renorm=True),
+    layers.Flatten(),
+    layers.Dense(8, activation='relu'),
+    layers.Dense(1, activation='sigmoid'),
+])
+****************
+
+Now we'll train the model. Run the next cell to compile it with a loss and accuracy metric and fit it to the training set.
+
+****************
+optimizer = tf.keras.optimizers.Adam(epsilon=0.01)
+model.compile(
+    optimizer=optimizer,
+    loss='binary_crossentropy',
+    metrics=['binary_accuracy'],
+)
+
+history = model.fit(
+    ds_train,
+    validation_data=ds_valid,
+    epochs=50,
+)
+
+# Plot learning curves
+import pandas as pd
+history_frame = pd.DataFrame(history.history)
+history_frame.loc[:, ['loss', 'val_loss']].plot()
+history_frame.loc[:, ['binary_accuracy', 'val_binary_accuracy']].plot();
+
+Epoch 1/50
+80/80 [==============================] - 27s 207ms/step - loss: 0.6670 - binary_accuracy: 0.5865 - val_loss: 0.6371 - val_binary_accuracy: 0.6308
+Epoch 2/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.6865 - binary_accuracy: 0.5810 - val_loss: 0.6898 - val_binary_accuracy: 0.5785
+Epoch 3/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.6852 - binary_accuracy: 0.5787 - val_loss: 0.6813 - val_binary_accuracy: 0.5785
+Epoch 4/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.6812 - binary_accuracy: 0.5783 - val_loss: 0.6723 - val_binary_accuracy: 0.5777
+Epoch 5/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.6866 - binary_accuracy: 0.5767 - val_loss: 0.6551 - val_binary_accuracy: 0.5781
+Epoch 6/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.6491 - binary_accuracy: 0.5808 - val_loss: 0.6248 - val_binary_accuracy: 0.5789
+Epoch 7/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.6153 - binary_accuracy: 0.5796 - val_loss: 0.6063 - val_binary_accuracy: 0.5797
+Epoch 8/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.5820 - binary_accuracy: 0.6355 - val_loss: 0.5619 - val_binary_accuracy: 0.6953
+Epoch 9/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.5255 - binary_accuracy: 0.7344 - val_loss: 0.5107 - val_binary_accuracy: 0.7446
+Epoch 10/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.4639 - binary_accuracy: 0.7758 - val_loss: 0.5439 - val_binary_accuracy: 0.7339
+Epoch 11/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.4097 - binary_accuracy: 0.8112 - val_loss: 0.4214 - val_binary_accuracy: 0.8127
+Epoch 12/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.3864 - binary_accuracy: 0.8310 - val_loss: 0.3542 - val_binary_accuracy: 0.8472
+Epoch 13/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.3728 - binary_accuracy: 0.8349 - val_loss: 0.3413 - val_binary_accuracy: 0.8493
+Epoch 14/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.3328 - binary_accuracy: 0.8507 - val_loss: 0.3129 - val_binary_accuracy: 0.8685
+Epoch 15/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.3001 - binary_accuracy: 0.8767 - val_loss: 0.3086 - val_binary_accuracy: 0.8769
+Epoch 16/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2897 - binary_accuracy: 0.8763 - val_loss: 0.3088 - val_binary_accuracy: 0.8745
+Epoch 17/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2611 - binary_accuracy: 0.8910 - val_loss: 0.2777 - val_binary_accuracy: 0.8868
+Epoch 18/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2449 - binary_accuracy: 0.8992 - val_loss: 0.2539 - val_binary_accuracy: 0.8994
+Epoch 19/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2364 - binary_accuracy: 0.8999 - val_loss: 0.2503 - val_binary_accuracy: 0.8994
+Epoch 20/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2210 - binary_accuracy: 0.9076 - val_loss: 0.2698 - val_binary_accuracy: 0.9000
+Epoch 21/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2167 - binary_accuracy: 0.9111 - val_loss: 0.3270 - val_binary_accuracy: 0.8820
+Epoch 22/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.2136 - binary_accuracy: 0.9119 - val_loss: 0.2852 - val_binary_accuracy: 0.8933
+Epoch 23/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1850 - binary_accuracy: 0.9234 - val_loss: 0.3179 - val_binary_accuracy: 0.8862
+Epoch 24/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1732 - binary_accuracy: 0.9250 - val_loss: 0.2552 - val_binary_accuracy: 0.9000
+Epoch 25/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1618 - binary_accuracy: 0.9332 - val_loss: 0.3512 - val_binary_accuracy: 0.8846
+Epoch 26/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1609 - binary_accuracy: 0.9316 - val_loss: 0.2946 - val_binary_accuracy: 0.8941
+Epoch 27/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1492 - binary_accuracy: 0.9406 - val_loss: 0.2801 - val_binary_accuracy: 0.9077
+Epoch 28/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1443 - binary_accuracy: 0.9422 - val_loss: 0.5362 - val_binary_accuracy: 0.8329
+Epoch 29/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1624 - binary_accuracy: 0.9341 - val_loss: 0.2542 - val_binary_accuracy: 0.9125
+Epoch 30/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1324 - binary_accuracy: 0.9474 - val_loss: 0.2545 - val_binary_accuracy: 0.9119
+Epoch 31/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1454 - binary_accuracy: 0.9437 - val_loss: 0.3070 - val_binary_accuracy: 0.8978
+Epoch 32/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1270 - binary_accuracy: 0.9498 - val_loss: 0.2975 - val_binary_accuracy: 0.8969
+Epoch 33/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1303 - binary_accuracy: 0.9465 - val_loss: 0.4153 - val_binary_accuracy: 0.8759
+Epoch 34/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1139 - binary_accuracy: 0.9547 - val_loss: 0.3524 - val_binary_accuracy: 0.8945
+Epoch 35/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1006 - binary_accuracy: 0.9605 - val_loss: 0.2939 - val_binary_accuracy: 0.9117
+Epoch 36/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1054 - binary_accuracy: 0.9588 - val_loss: 0.2471 - val_binary_accuracy: 0.9133
+Epoch 37/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.1082 - binary_accuracy: 0.9609 - val_loss: 0.2413 - val_binary_accuracy: 0.9178
+Epoch 38/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0902 - binary_accuracy: 0.9683 - val_loss: 0.2308 - val_binary_accuracy: 0.9115
+Epoch 39/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0967 - binary_accuracy: 0.9615 - val_loss: 0.2714 - val_binary_accuracy: 0.9105
+Epoch 40/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0847 - binary_accuracy: 0.9664 - val_loss: 0.2943 - val_binary_accuracy: 0.9091
+Epoch 41/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0845 - binary_accuracy: 0.9668 - val_loss: 0.2688 - val_binary_accuracy: 0.9168
+Epoch 42/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.0758 - binary_accuracy: 0.9713 - val_loss: 0.3296 - val_binary_accuracy: 0.9109
+Epoch 43/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0828 - binary_accuracy: 0.9662 - val_loss: 0.2955 - val_binary_accuracy: 0.9180
+Epoch 44/50
+80/80 [==============================] - 7s 86ms/step - loss: 0.0784 - binary_accuracy: 0.9713 - val_loss: 0.3886 - val_binary_accuracy: 0.9016
+Epoch 45/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0680 - binary_accuracy: 0.9744 - val_loss: 0.3496 - val_binary_accuracy: 0.9097
+Epoch 46/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.0657 - binary_accuracy: 0.9746 - val_loss: 0.2630 - val_binary_accuracy: 0.9198
+Epoch 47/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.0761 - binary_accuracy: 0.9703 - val_loss: 0.2791 - val_binary_accuracy: 0.9224
+Epoch 48/50
+80/80 [==============================] - 7s 85ms/step - loss: 0.0633 - binary_accuracy: 0.9754 - val_loss: 0.2986 - val_binary_accuracy: 0.9186
+Epoch 49/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0633 - binary_accuracy: 0.9762 - val_loss: 0.2622 - val_binary_accuracy: 0.9210
+Epoch 50/50
+80/80 [==============================] - 7s 84ms/step - loss: 0.0690 - binary_accuracy: 0.9740 - val_loss: 0.2530 - val_binary_accuracy: 0.9265
+****************
+
+<4th step: Train model>
+Examine the training curves. What there any sign of overfitting? How does the performance of this model compare to other models you've trained in this course?
+
+****************
+# View the solution (Run this code cell to receive credit!)
+q_4.solution()
+
+Solution:
+1} The learning curves in this model stayed close together for much longer than in previous models. This suggests that the augmentation helped prevent overfitting, allowing the model to
+continue improving.
+2} And notice that this model achieved the highest accuracy of all the models in the course! This won't always be the case, but it shows that a well-designed custom convnet can sometimes
+perform as well or better than a much larger pretrained model. Depending on your application, having a smaller model (which requires fewer resources) could be a big advantage.
+****************
