@@ -1,10 +1,7 @@
-February 23rd, 2024
-Advanced Kaggle
--3rd Course: Computer Vision-
-
-=======================
+Date: February 23rd, 2024
 User: James Surya Putra
-=======================
+
+# Advanced Kaggle: 3rd Course - Computer Vision
 
 DISCLAIMER:
 - All tutorials and exercises are taken, including questions, submissions, hints, and solutions.
